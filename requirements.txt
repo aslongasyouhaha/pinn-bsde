@@ -1,0 +1,5 @@
+# Python 3.9. Install torch first, as described in README.md.
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.9.0+cpu
+numpy==1.26.4
+signatory==1.2.6.1.9.0

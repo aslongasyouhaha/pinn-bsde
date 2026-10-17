@@ -1,0 +1,113 @@
+# PINN、路径表示与 BSDE 的数学联系
+
+本项目比较 Black–Scholes 模型下三种求解器：充分状态 PINN、LSTM–PINN、Signature–LSTM–BSDE。这里的“对偶”指同一定价问题的 PDE/PPDE 与随机表示之间的联系，不是优化问题的拉格朗日对偶，也不意味着三个离散损失等价。
+
+## 1. 定价问题
+
+在无分红的风险中性测度下，
+
+$$dS_t=rS_t\,dt+\sigma S_t\,dW_t,\qquad
+V_t=\mathbb E[e^{-r(T-t)}G\mid\mathcal F_t].$$
+
+浮动执行价回望期权的支付为
+
+$$G_{\mathrm{call}}=S_T-m_T,\quad m_t=\min_{u\le t}S_u;\qquad
+G_{\mathrm{put}}=M_T-S_T,\quad M_t=\max_{u\le t}S_u.$$
+
+零返还敲出障碍期权的支付为
+
+$$G=\mathbf 1_{\{\tau_B>T\}}g(S_T),$$
+
+其中向上敲出时 $\tau_B=\inf\{t:S_t\ge B\}$，向下敲出时不等号反向；$g$ 是普通 call/put 支付。本文的连续解析价格对应连续监控。
+
+## 2. 充分状态 PINN
+
+当前模型中的历史可以压缩为定价所需的充分状态：回望 call 使用 $(t,S_t,m_t)$，put 使用 $(t,S_t,M_t)$。零返还敲出期权在存续区域内只需 $(t,S_t)$；如果需要在所有路径上表示价格，则还需记录是否已经敲出。
+
+在回望状态域内部，极值暂不变化，价格满足
+
+$$\mathcal R[V]:=V_t+rsV_s+\tfrac12\sigma^2s^2V_{ss}-rV=0.$$
+
+回望 call 的终端条件与极值边界条件是
+
+$$V(T,s,m)=s-m,\qquad V_m(t,s,m)\big|_{s=m}=0.$$
+
+回望 put 则为 $V(T,s,M)=M-s$、$V_M|_{s=M}=0$。这些边界条件使扩展 Itô 公式中的极值有限变差项消失。
+
+障碍期权在存续域内满足同一 Black–Scholes PDE，终端条件为 $g(s)$，吸收边界为 $V(t,B)=0$。终端与障碍相交的角点可能不光滑，方程按内部及边界极限理解。敲入价格通过 $V_{\rm in}=V_{\rm vanilla}-V_{\rm out}$ 得到。
+
+以普通前馈网络 $V_\theta$ 表示价格，训练目标为
+
+$$L_{\rm PINN}=\lambda_P\mathbb E[|\mathcal R[V_\theta]|^2]
++\lambda_T\mathbb E[|V_\theta(T,\cdot)-G|^2]
++\lambda_B\mathbb E[|\mathcal B[V_\theta]|^2].$$
+
+代码还可以加入非负约束等项。当前空间和时间导数主要使用有限差分；这仍是通过 PDE 残差训练，但应检查差分尺度误差。
+
+实现位于 `scripts/state_pinn/`，不使用 LSTM。
+
+## 3. 从 PDE 到 BSDE
+
+对充分光滑的 $V$ 使用 Itô 公式，并代入 PDE，可得
+
+$$Y_t=V(t,X_t),\qquad Z_t=\sigma S_tV_s(t,X_t),\qquad
+dY_t=rY_t\,dt+Z_t\,dW_t.$$
+
+这里 $X_t$ 包含相应充分状态，$Z$ 是随机积分系数；股票对冲头寸为 $Z_t/(\sigma S_t)$。回望产品还需满足上一节的极值边界条件；连续障碍产品在击中障碍时吸收为零。
+
+对应后向积分形式为
+
+$$Y_t=G-\int_t^T rY_u\,du-\int_t^T Z_u\,dW_u.$$
+
+因此贴现价格是鞅：
+
+$$d(e^{-rt}Y_t)=e^{-rt}Z_t\,dW_t.$$
+
+这是 Feynman–Kac、鞅表示和 PDE/BSDE 联系在当前模型下的具体形式。PINN 拟合微分方程残差；BSDE 方法拟合路径上的随机积分关系。两者的连续目标有关联，但采样、参数化、离散误差及优化行为不同。
+
+在足够正则的路径泛函框架下，普通导数可以推广为水平、垂直路径导数，从而得到 PPDE 与路径 BSDE 的对应关系。相关背景见[原论文第 2–4 节](https://arxiv.org/abs/2011.10630)，PDF 保存在 `docs/`。本项目的以下损失说明直接对应本地实现。
+
+## 4. Signature–LSTM–BSDE
+
+代码先将细网格路径分段，做带时间的 lead–lag 变换，再计算截断 logsignature。LSTM 按时间读取这些分段特征，两个输出头分别预测 $Y_i$ 和 $Z_i$；整个网络在时刻 $i$ 只读取截至该时刻的特征。
+
+当前实现使用以下局部近似：
+
+$$Y_i+Z_i\Delta W_i\approx e^{-r\Delta t}Y_{i+1}.$$
+
+右侧目标使用 `detach()`，因此是半梯度训练；不是对完整双向残差进行直接联合求导。还加入终端支付误差。区间内变化的随机积分以常数 $Z_i\Delta W_i$ 近似，存在网格误差。
+
+`steps` 为路径模拟步数，`lag` 为每段的细步数，因此 BSDE 区间数为 `steps / lag`。例如 128/8 对应 16 个 BSDE 区间。`depth` 是 logsignature 截断阶数，不能与 PINN 网络深度混为一谈。
+
+障碍实现用网格上的运行最大/最小值计算 `alive` 并屏蔽输出；因此其训练支付是离散监控支付。回望支付中的极值同样在网格上计算。有限阶 signature 和有限维 LSTM 并不保证精确保留全部历史。
+
+实现位于 `scripts/signature_bsde/`。
+
+## 5. LSTM–PINN 的角色和现有近似
+
+实现位于 `scripts/lstm_pinn/`。LSTM 编码 $(t_i,\log(S_i/S_0))$ 的历史，价格头输入 $(t_i,S_i,h_i)$，用 PDE 风格残差和终端等条件训练。
+
+必须区分两种时间差分：
+
+$$\frac{V_{i+1}-V_{i-1}}{2\Delta t}\quad\text{与}\quad
+\frac{V(t+\varepsilon,s,h)-V(t-\varepsilon,s,h)}{2\varepsilon}.$$
+
+第一种同时改变价格路径和隐藏状态，包含随机路径变化，并不是 PDE 的 $\partial_tV$。第二种固定 $h$，但没有证明冻结 LSTM 状态等价于 PPDE 的水平路径导数；同样，冻结 $h$ 做空间扰动可能遗漏编码器对路径扰动的响应。
+
+当前障碍版本采用路径时间差分；回望版本提供 `pathwise`（默认）和 `frozen` 两种模式。因此这里保留它作为**实验性的 LSTM–PINN 对照**，不能声称它已经严格求解了与充分状态 PINN 相同的 PDE/PPDE。
+
+## 6. 如何读实验对比
+
+| 方法 | 历史表示 | 主要训练约束 | 监控及解释 |
+|---|---|---|---|
+| 充分状态 PINN | 已知充分状态 | PDE、终端、边界 | 连续问题的近似 |
+| LSTM–PINN | 原始路径的递归编码 | PDE 风格残差、终端等 | 实验性路径残差；回望终端极值来自网格 |
+| Signature–BSDE | 分段 logsignature + LSTM | BSDE、终端 | 当前训练支付为离散监控 |
+
+障碍 PINN 原始默认配置含有 MC 初始价格锚点。统一入口 `scripts.run_comparison` 默认将其权重设为零，避免把已知初始价格作为监督目标；如显式启用，结果表会记录该权重。原始单方法默认值保留，便于复现实验。
+
+统一结果表同时列出连续解析价、公共离散 MC，以及障碍产品的 Brownian bridge MC。MC 标准误也会保存。Bridge 对照使用区间条件存续概率给支付加权，不直接修改训练目标。不能把离散支付对连续解析价的差异全部解释为网络误差。
+
+相同轮数和 batch 不代表相同计算成本。各方法保留原有网络和损失权重，训练时间与完整参数均保存。各方法 loss 的尺度、项数不同，不应按总 loss 大小给方法排名。单次初始价格误差也不能证明整个价格函数或对冲系数准确。正式比较应使用更充分的训练、多随机种子以及网格细化实验。
+
+`comparison.ipynb` 展示初始价格、解析误差、MC 对照和逐轮 loss。随仓库保存的 notebook 输出为短训练演示，不是收敛结果或方法优劣结论。

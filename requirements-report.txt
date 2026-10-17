@@ -1,0 +1,7 @@
+# Plotting / notebook environment; may be separate from the training environment.
+matplotlib==3.7.2
+pandas==2.2.3
+nbformat==5.9.2
+nbclient==0.5.13
+ipykernel==6.29.5
+jupyterlab==4.2.5

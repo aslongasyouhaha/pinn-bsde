@@ -1,0 +1,17 @@
+# Publish only the organized project, not the surrounding course workspace.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/summary.md
+!/comparison.ipynb
+!/requirements.txt
+!/requirements-report.txt
+!/scripts/
+!/docs/
+!/tests/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+outputs/
+*.pt
