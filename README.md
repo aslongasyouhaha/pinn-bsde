@@ -43,13 +43,6 @@ python -c "import torch,signatory; print(torch.__version__,signatory.__version__
 
 PyTorch 历史安装方式见[官方页面](https://pytorch.org/get-started/previous-versions/)。`requirements.txt` 中的 Signatory 对应上述 PyTorch 版本，不适用于任意新版本 PyTorch。平台缺少对应 wheel 时可能需要本地 C++ 编译环境。
 
-运行 notebook 或生成图表还需：
-
-```bash
-python -m pip install -r requirements-report.txt
-```
-
-绘图环境和训练环境可以分开。已有 `.venv_signatory` 时，在绘图环境执行统一入口并传入 `--python .venv_signatory/Scripts/python.exe`，训练子进程会使用该解释器。Notebook 会优先检测这个本地环境。
 
 ## 运行
 
@@ -64,12 +57,6 @@ python -m scripts.run_comparison --products lookback barrier_upout barrier_downo
 ```bash
 python -m scripts.run_comparison --products lookback barrier_upout barrier_downout --epochs 3000 --batch-size 256 --steps 128 --lag 8 --seeds 1 2 3 --output-dir outputs/experiment_01
 python -m scripts.report outputs/experiment_01
-```
-
-公共参考价格的平价关系与 bridge 监控一致性检查：
-
-```bash
-python -m unittest discover -s tests -v
 ```
 
 这只是实验配置示例，不保证达到指定精度。使用 `--option-type put` 切换 put；市场参数包括 `--s0 --r --sigma --T --strike --up-barrier --down-barrier`。`--steps` 必须能被 `--lag` 整除。当前回望解析公式不支持零利率；统一入口对此给出错误提示。`--device cuda` 需要自行配置匹配的 CUDA 训练环境。

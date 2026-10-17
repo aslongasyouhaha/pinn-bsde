@@ -6,10 +6,8 @@
 !/summary.md
 !/comparison.ipynb
 !/requirements.txt
-!/requirements-report.txt
 !/scripts/
 !/docs/
-!/tests/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
