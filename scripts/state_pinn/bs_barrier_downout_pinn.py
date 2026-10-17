@@ -333,6 +333,9 @@ def train(args: argparse.Namespace) -> None:
     print(f"downin_relative_error_vs_continuous={abs(inferred_downin - analytic_downin) / max(abs(analytic_downin), 1e-12):.4%}")
     print(f"downin_relative_error_vs_bridge_mc={abs(inferred_downin - mc_downin) / max(abs(mc_downin), 1e-12):.4%}")
     recorder.finish(model, market, contract, pred, ref, discrete_ref)
+    if args.output_dir:
+        from .evaluate import evaluate
+        evaluate(args.output_dir)
 
 
 
@@ -345,8 +348,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--r", type=float, default=0.03)
     parser.add_argument("--sigma", type=float, default=0.4)
     parser.add_argument("--T", type=float, default=1.0)
-    parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument("--epochs", type=int, default=10001)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--hidden", type=int, default=64)
     parser.add_argument("--depth", type=int, default=3)
     parser.add_argument("--lr", type=float, default=5e-4)

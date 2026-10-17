@@ -64,12 +64,12 @@ python -m scripts.report outputs/experiment_01
 单独运行方法，可用 `--help` 查看该方法全部超参数：
 
 ```bash
-python -m scripts.state_pinn.bs_barrier_upout_pinn --epochs 1000 --mc-anchor-weight 0 --output-dir outputs/single_state
+python -m scripts.state_pinn.bs_barrier_upout_pinn --epochs 10001 --output-dir outputs/single_state
 python -m scripts.lstm_pinn.bs_barrier_upout_lstm_pinn --epochs 1000 --mc-anchor-weight 0 --output-dir outputs/single_lstm
 python -m scripts.signature_bsde.bs_barrier_upout_signature_bsde --epochs 1000 --output-dir outputs/single_bsde
 ```
 
-统一入口默认关闭障碍 PINN 的 MC 价格锚点；单方法脚本保留原始默认权重，公平对比时请显式设为零。统一入口固定共同市场、训练轮数、batch、学习率及模拟网格，其余网络结构和损失权重保留各方法默认值并保存；这不是等参数量或等算力实验。
+统一入口默认保留充分状态障碍 PINN 的 MC 价格锚点（权重 100）；LSTM–PINN 仍保持此前的统一入口配置（权重 0）。可用 `--mc-anchor-weight` 显式覆盖。锚点属于 MC 辅助监督，解释初始价格误差时应同时查看未锚定状态的误差。统一入口固定共同市场、训练轮数、batch、学习率及模拟网格，其余网络结构和损失权重保留各方法默认值并保存；这不是等参数量或等算力实验。
 
 打开 `comparison.ipynb` 并运行全部单元格即可展示。Notebook 使用短训练配置（100 轮、32 步）演示，已有输出时读取保存的数据并显示实际配置；更改参数后应指定新的输出目录。统一训练入口会拒绝覆盖已有配置的实验目录。
 
@@ -95,6 +95,23 @@ outputs/experiment_01/
 `relative_error` 是比例（0.01 表示 1%）；解析价为零时保存为空，改看绝对误差。模型 checkpoint 不包含优化器状态，供推断使用，不支持原样续训。不同方法的 loss 定义不同，图表按方法分开显示。
 
 障碍 BSDE 目前学习离散监控支付；PINN 面向连续 PDE。Notebook 同时展示连续解析价、离散 MC 及 bridge MC，避免混淆监控差异和训练误差。LSTM–PINN 的路径时间差分尚不是严格 PPDE 导数，详见数学说明。Notebook 中保存的短训练输出只说明流程可运行。
+
+## 当前复核：充分状态障碍 PINN
+
+这一版只使用 $(t,S)$ 与前馈网络，不涉及 LSTM。保留原来的 PDE、终端、障碍、非负及价格上界损失，以及 MC 起始锚点。连续障碍锚点使用精确 GBM 网格与 Brownian bridge 条件存续概率计算，没有将解析价格用作训练标签。采样不断更新，公共 MC 参考使用独立种子。
+
+本次只恢复统一入口中的充分状态障碍 MC 锚点（默认权重 100），将单方法默认预算设为 10,001 轮、batch 128，并加入独立网格评估。未将没有稳定改善结果的价格表示或采样改动纳入最终算法。LSTM–PINN、Signature–BSDE 和回望算法未改。
+
+~~~bash
+python -m scripts.run_comparison --methods state_pinn --products barrier_upout barrier_downout --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_review
+python -m scripts.state_pinn.evaluate outputs/state_pinn_review/barrier_upout/state_pinn/seed_1
+python -m scripts.state_pinn.evaluate outputs/state_pinn_review/barrier_downout/state_pinn/seed_1
+python -m scripts.report outputs/state_pinn_review
+~~~
+
+若在绘图环境中调用已有训练环境，增加 --python .venv_signatory/Scripts/python.exe。评估脚本应由训练环境运行。训练完成后自动保存 surface_validation.csv 和 validation.json，检查未设锚点的 30/29 个价格状态、障碍边界和终端支付。
+
+当前单 seed、默认 call 合约的复核结果：向上敲出初始价格误差约 3.00%，向下敲出约 0.21%；独立网格价格相对 L2 误差分别约 13.60% 和 0.14%。向上敲出的近到期边界、终端误差仍较大，尚不能声称整个价格函数收敛。Notebook 保存了实际结果与曲线。
 
 ## 来源
 

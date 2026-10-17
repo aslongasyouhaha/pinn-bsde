@@ -42,7 +42,8 @@ def main(argv=None):
     parser.add_argument('--strike', type=float, default=1.0)
     parser.add_argument('--up-barrier', type=float, default=1.2)
     parser.add_argument('--down-barrier', type=float, default=.8)
-    parser.add_argument('--mc-anchor-weight', type=float, default=0.0)
+    parser.add_argument('--mc-anchor-weight', type=float, default=None,
+                        help='Override anchor weight; default: state PINN=100, LSTM PINN=0')
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--python', default=sys.executable, help='Interpreter with torch and signatory installed')
@@ -96,7 +97,8 @@ def main(argv=None):
                     if method == 'signature_bsde':
                         native.update(lag=args.lag)
                     elif product != 'lookback':
-                        native.update(mc_anchor_weight=args.mc_anchor_weight, mc_anchor_paths=args.mc_paths)
+                        anchor_weight = args.mc_anchor_weight if args.mc_anchor_weight is not None else (100.0 if method == 'state_pinn' else 0.0)
+                        native.update(mc_anchor_weight=anchor_weight, mc_anchor_paths=args.mc_paths)
                         if method == 'state_pinn':
                             native.update(mc_anchor_steps=args.steps)
                     command = prefix + [module]
@@ -108,7 +110,7 @@ def main(argv=None):
                     metrics = json.loads((run_dir / 'metrics.json').read_text(encoding='utf-8'))
                     row = {key: metrics[key] for key in ['prediction', 'continuous_analytic', 'absolute_error', 'relative_error', 'elapsed_seconds']}
                     row.update(product=product, method=method, seed=seed,
-                               mc_anchor_weight=args.mc_anchor_weight if method != 'signature_bsde' and product != 'lookback' else 0.0,
+                               mc_anchor_weight=native.get('mc_anchor_weight', 0.0),
                                training_monitoring={
                                    'state_pinn': 'continuous PDE',
                                    'lstm_pinn': 'experimental path residual; grid terminal states',
