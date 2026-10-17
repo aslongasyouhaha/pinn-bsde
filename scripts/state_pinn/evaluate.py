@@ -68,9 +68,54 @@ def evaluate(run_dir):
     return result
 
 
+@torch.no_grad()
+def compare_terminal_sampling(run_dir, baseline_dir):
+    """Save paired terminal/boundary diagnostics for the up-and-out ablation."""
+    root = Path(run_dir)
+    rows, curves = [], []
+    for label, folder in [('legacy', baseline_dir), ('full', run_dir)]:
+        folder = Path(folder)
+        metrics = json.loads((folder / 'metrics.json').read_text(encoding='utf-8'))
+        validation = evaluate(folder)
+        if 'upout' not in metrics['module']:
+            raise ValueError('This ablation is for the up-and-out state PINN.')
+        module = importlib.import_module(metrics['module'])
+        saved = torch.load(folder / 'model.pt', map_location='cpu')
+        args = saved['args']
+        model = module.MLP(args['hidden'], args['depth'])
+        model.load_state_dict(saved['state_dict'])
+        model.eval()
+        market, contract = module.Market(**saved['market']), module.BarrierContract(**saved['contract'])
+        row = dict(sampler=label, initial_price=metrics['prediction'],
+                   initial_relative_error=metrics['relative_error'],
+                   surface_relative_l2=validation['surface_relative_l2'],
+                   terminal_rmse=validation['terminal_rmse'], boundary_rmse=validation['boundary_rmse'],
+                   boundary_max=validation['boundary_max_absolute_error'])
+        lower = contract.barrier * (1-max(5*args['fd_s_rel'], .001))
+        spots = torch.linspace(lower, contract.barrier*(1-1e-4), 1000)
+        terminal = module.model_value(model, market, contract, torch.full_like(spots, market.T), spots)
+        payoff = module.vanilla_payoff(spots, contract)
+        row['omitted_strip_terminal_rmse'] = (terminal-payoff).square().mean().sqrt().item()
+        for x, pred, target in zip(spots.tolist(), terminal.tolist(), payoff.tolist()):
+            curves.append(dict(sampler=label, kind='terminal', x=x, prediction=pred, target=target))
+        times = torch.linspace(0., .999*market.T, 300)
+        boundary = module.model_value(model, market, contract, times, torch.full_like(times, contract.barrier))
+        for x, pred in zip(times.tolist(), boundary.tolist()):
+            curves.append(dict(sampler=label, kind='barrier', x=x, prediction=pred, target=0.))
+        rows.append(row)
+    for name, data in [('terminal_sampling_comparison.csv', rows), ('terminal_sampling_curves.csv', curves)]:
+        with (root/name).open('w', newline='', encoding='utf-8') as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(data[0]))
+            writer.writeheader()
+            writer.writerows(data)
+    return rows
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('run_dir')
+    parser.add_argument('--compare-to', default=None, help='Baseline run directory for terminal-sampler ablation')
     args = parser.parse_args()
     torch.set_num_threads(1)
-    print(json.dumps(evaluate(args.run_dir),indent=2))
+    result = compare_terminal_sampling(args.run_dir, args.compare_to) if args.compare_to else evaluate(args.run_dir)
+    print(json.dumps(result,indent=2))

@@ -44,6 +44,8 @@ def main(argv=None):
     parser.add_argument('--down-barrier', type=float, default=.8)
     parser.add_argument('--mc-anchor-weight', type=float, default=None,
                         help='Override anchor weight; default: state PINN=100, LSTM PINN=0')
+    parser.add_argument('--terminal-sampling', choices=['legacy', 'full'], default='legacy',
+                        help='State up-and-out PINN only; keep legacy as the default control')
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--python', default=sys.executable, help='Interpreter with torch and signatory installed')
@@ -88,6 +90,8 @@ def main(argv=None):
                     native = dict(epochs=args.epochs, batch_size=args.batch_size, seed=seed, device=args.device,
                                   s0=args.s0, r=args.r, sigma=args.sigma, T=args.T, lr=args.lr,
                                   option_type=args.option_type, output_dir=str(run_dir), print_every=max(1, args.epochs // 10))
+                    if method == 'state_pinn' and product == 'barrier_upout':
+                        native['terminal_sampling'] = args.terminal_sampling
                     if product != 'lookback':
                         native.update(strike=args.strike, barrier=args.up_barrier if product == 'barrier_upout' else args.down_barrier)
                     if method != 'state_pinn':

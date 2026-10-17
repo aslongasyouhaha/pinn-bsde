@@ -137,6 +137,20 @@ def sample_alive_spot(batch_size: int, market: Market, contract: BarrierContract
     return s[torch.randperm(batch_size, device=device)]
 
 
+def sample_terminal_spot(batch_size: int, contract: BarrierContract, device: torch.device) -> torch.Tensor:
+    """Sample the full alive domain; terminal payoff needs no FD safety margin."""
+    n_near = batch_size // 3
+    n_wide = batch_size - n_near
+    # Keep the same RNG draw counts as the original sampler for a paired run.
+    eps = 4.0 * torch.finfo(torch.get_default_dtype()).eps
+    upper = contract.barrier * (1.0 - eps)
+    near = upper - 0.2 * contract.barrier * torch.rand(n_near, device=device)
+    lower = min(1e-4, 0.1 * contract.barrier)
+    wide = lower + (upper - lower) * torch.rand(n_wide, device=device)
+    s = torch.cat([near, wide], dim=0)
+    return s[torch.randperm(batch_size, device=device)]
+
+
 def pde_residual(
     model: MLP,
     market: Market,
@@ -216,6 +230,7 @@ def barrier_loss(
     mc_anchor_value: float,
     cap_weight: float,
     nonnegative_weight: float,
+    terminal_sampling: str = "legacy",
 ) -> tuple[torch.Tensor, dict[str, float]]:
     dt = min(fd_t, market.T / 20.0)
     t = sample_time(batch_size, market, device, dt)
@@ -224,7 +239,8 @@ def barrier_loss(
 
     loss_pde = (pde_residual(model, market, contract, t, s, ds_rel, fd_t) ** 2).mean()
 
-    s_terminal = sample_alive_spot(batch_size, market, contract, device, ds_rel)
+    s_terminal = (sample_terminal_spot(batch_size, contract, device) if terminal_sampling == "full"
+                  else sample_alive_spot(batch_size, market, contract, device, ds_rel))
     terminal = model_value(model, market, contract, torch.full_like(s_terminal, market.T), s_terminal)
     loss_terminal = ((terminal - vanilla_payoff(s_terminal, contract)) ** 2).mean()
 
@@ -296,6 +312,7 @@ def train(args: argparse.Namespace) -> None:
             mc_anchor_value,
             args.cap_weight,
             args.nonnegative_weight,
+            terminal_sampling=args.terminal_sampling,
         )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
@@ -369,6 +386,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--print-every", type=int, default=200)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--terminal-sampling", choices=["legacy", "full"], default="legacy",
+                        help="Terminal sampler ablation; full covers the strip next to the barrier")
     parser.add_argument("--output-dir", default=None)
     return parser.parse_args(argv)
 

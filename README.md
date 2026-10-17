@@ -113,6 +113,19 @@ python -m scripts.report outputs/state_pinn_review
 
 当前单 seed、默认 call 合约的复核结果：向上敲出初始价格误差约 3.00%，向下敲出约 0.21%；独立网格价格相对 L2 误差分别约 13.60% 和 0.14%。向上敲出的近到期边界、终端误差仍较大，尚不能声称整个价格函数收敛。Notebook 保存了实际结果与曲线。
 
+## 向上敲出：终端采样单项对照
+
+只改变终端采样、保持网络、PDE 采样、损失权重、随机种子和 10,001 轮训练预算不变。旧采样只覆盖到 1.14，新采样覆盖障碍 1.2 内侧；两者消耗相同数量的随机数。
+
+~~~bash
+python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_terminal_sampling
+python -m scripts.state_pinn.evaluate outputs/state_pinn_terminal_sampling/barrier_upout/state_pinn/seed_1 --compare-to outputs/state_pinn_review/barrier_upout/state_pinn/seed_1
+~~~
+
+默认 --terminal-sampling legacy 保留原配置；full 仅作为单项对照。固定网格终端 RMSE 从 0.0446 降到 0.0208，但边界 RMSE 从 0.0101 增至 0.0288，内部价格相对 L2 误差从 13.60% 增至 21.53%。初始价格误差从 3.00% 增至 5.32%。因此这项改动尚未整体改善求解，不作为默认修复。下一步需单独验证仍被 PDE 采样遗漏的近障碍区域。
+
+本地对照数据、曲线保存在 outputs/state_pinn_terminal_sampling/barrier_upout/state_pinn/seed_1/terminal_sampling_comparison.csv 和 terminal_sampling_curves.csv。Notebook 已嵌入实测结果。
+
 ## 来源
 
 原论文：[Solving path dependent PDEs with LSTM networks and path signatures](https://arxiv.org/abs/2011.10630)，Marc Sabate-Vidales、David Šiška、Lukasz Szpruch（2020）。[论文 PDF](docs/2011.10630_Solving_path_dependent_PDEs_with_LSTM_networks_and_path_signatures.pdf) 已归档。
