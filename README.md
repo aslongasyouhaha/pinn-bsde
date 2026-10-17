@@ -126,6 +126,21 @@ python -m scripts.state_pinn.evaluate outputs/state_pinn_terminal_sampling/barri
 
 本地对照数据、曲线保存在 outputs/state_pinn_terminal_sampling/barrier_upout/state_pinn/seed_1/terminal_sampling_comparison.csv 和 terminal_sampling_curves.csv。Notebook 已嵌入实测结果。
 
+## 向上敲出：PDE 采样范围对照
+
+两组均使用补全的终端采样、相同种子和 10,001 轮预算。为使近障碍差分不越界，两组都将空间步长限制在到障碍距离的 45% 以内，并用双精度计算 PDE 差分；模型参数仍保持 float32。两组之间只改变 PDE 采样范围，默认配置未改。
+
+~~~bash
+python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --pde-sampling legacy --pde-precision float64 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_pde_control
+python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --pde-sampling full --pde-precision float64 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_pde_full
+~~~
+
+相同安全差分下，完整 PDE 覆盖使初始价格误差从 5.32% 降至 2.65%，但内部网格相对 L2 误差从 21.53% 升至 67.04%，边界 RMSE 从 0.0288 升至 0.0314，终端 RMSE 从 0.0208 升至 0.0330。这项改动也不替换原默认配置。
+
+在实验组最终模型的一批固定诊断样本上，加权终端损失与边界损失的梯度余弦约 -0.945，呈强烈反向；PDE 与终端项约 -0.771。它提示当前优化在终端、边界条件之间存在明显竞争，不表示这些条件在数学上不相容，也不能从一次诊断推出全部训练过程的因果关系。
+
+Notebook 读取两组的 validation.json、surface_validation.csv 展示对照。原默认模式的短运行 checkpoint 已确认与改动前完全一致。
+
 ## 来源
 
 原论文：[Solving path dependent PDEs with LSTM networks and path signatures](https://arxiv.org/abs/2011.10630)，Marc Sabate-Vidales、David Šiška、Lukasz Szpruch（2020）。[论文 PDF](docs/2011.10630_Solving_path_dependent_PDEs_with_LSTM_networks_and_path_signatures.pdf) 已归档。

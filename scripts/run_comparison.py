@@ -46,11 +46,15 @@ def main(argv=None):
                         help='Override anchor weight; default: state PINN=100, LSTM PINN=0')
     parser.add_argument('--terminal-sampling', choices=['legacy', 'full'], default='legacy',
                         help='State up-and-out PINN only; keep legacy as the default control')
+    parser.add_argument('--pde-sampling', choices=['legacy', 'full'], default='legacy')
+    parser.add_argument('--pde-precision', choices=['float32', 'float64'], default='float32')
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--python', default=sys.executable, help='Interpreter with torch and signatory installed')
     parser.add_argument('--output-dir', default='outputs/comparison')
     args = parser.parse_args(argv)
+    if args.pde_sampling == 'full' and args.pde_precision != 'float64':
+        parser.error('--pde-sampling full requires --pde-precision float64.')
     if min(args.epochs, args.batch_size, args.steps, args.lag, args.eval_paths, args.threads) <= 0 or args.mc_paths < 2:
         parser.error('Counts must be positive; --mc-paths must be at least 2.')
     if args.steps < 3 or args.steps % args.lag:
@@ -92,6 +96,8 @@ def main(argv=None):
                                   option_type=args.option_type, output_dir=str(run_dir), print_every=max(1, args.epochs // 10))
                     if method == 'state_pinn' and product == 'barrier_upout':
                         native['terminal_sampling'] = args.terminal_sampling
+                        native['pde_sampling'] = args.pde_sampling
+                        native['pde_precision'] = args.pde_precision
                     if product != 'lookback':
                         native.update(strike=args.strike, barrier=args.up_barrier if product == 'barrier_upout' else args.down_barrier)
                     if method != 'state_pinn':

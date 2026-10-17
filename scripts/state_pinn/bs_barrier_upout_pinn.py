@@ -44,7 +44,16 @@ class MLP(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x).squeeze(-1)
+        if x.dtype == next(self.parameters()).dtype:
+            return self.net(x).squeeze(-1)
+        # Evaluate FD stencils in double precision while gradients flow back
+        # to the unchanged training parameters and optimizer state.
+        for layer in self.net:
+            if isinstance(layer, nn.Linear):
+                x = torch.nn.functional.linear(x, layer.weight.to(x.dtype), layer.bias.to(x.dtype))
+            else:
+                x = layer(x)
+        return x.squeeze(-1)
 
 
 def model_value(model: MLP, market: Market, contract: BarrierContract, t: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
@@ -159,8 +168,14 @@ def pde_residual(
     s: torch.Tensor,
     ds_rel: float,
     fd_t: float,
+    pde_precision: str = "float32",
 ) -> torch.Tensor:
+    if pde_precision == "float64":
+        t, s = t.double(), s.double()
     h = torch.clamp(ds_rel * s, min=1e-5)
+    if pde_precision == "float64":
+        # Keep both spatial perturbations strictly inside the alive domain.
+        h = torch.minimum(h, 0.45 * torch.minimum(s, contract.barrier - s))
     dt = min(fd_t, market.T / 20.0)
     v = model_value(model, market, contract, t, s)
     v_t_plus = model_value(model, market, contract, t + dt, s)
@@ -231,13 +246,18 @@ def barrier_loss(
     cap_weight: float,
     nonnegative_weight: float,
     terminal_sampling: str = "legacy",
+    pde_sampling: str = "legacy",
+    pde_precision: str = "float32",
 ) -> tuple[torch.Tensor, dict[str, float]]:
     dt = min(fd_t, market.T / 20.0)
     t = sample_time(batch_size, market, device, dt)
-    s = sample_alive_spot(batch_size, market, contract, device, ds_rel)
+    if pde_sampling == "full" and pde_precision != "float64":
+        raise ValueError("Full PDE coverage requires --pde-precision float64 for near-barrier FD stencils")
+    s = (sample_terminal_spot(batch_size, contract, device) if pde_sampling == "full"
+         else sample_alive_spot(batch_size, market, contract, device, ds_rel))
     value = model_value(model, market, contract, t, s)
 
-    loss_pde = (pde_residual(model, market, contract, t, s, ds_rel, fd_t) ** 2).mean()
+    loss_pde = (pde_residual(model, market, contract, t, s, ds_rel, fd_t, pde_precision) ** 2).mean()
 
     s_terminal = (sample_terminal_spot(batch_size, contract, device) if terminal_sampling == "full"
                   else sample_alive_spot(batch_size, market, contract, device, ds_rel))
@@ -313,6 +333,8 @@ def train(args: argparse.Namespace) -> None:
             args.cap_weight,
             args.nonnegative_weight,
             terminal_sampling=args.terminal_sampling,
+            pde_sampling=args.pde_sampling,
+            pde_precision=args.pde_precision,
         )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
@@ -388,6 +410,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--terminal-sampling", choices=["legacy", "full"], default="legacy",
                         help="Terminal sampler ablation; full covers the strip next to the barrier")
+    parser.add_argument("--pde-sampling", choices=["legacy", "full"], default="legacy")
+    parser.add_argument("--pde-precision", choices=["float32", "float64"], default="float32",
+                        help="float64 uses double FD calculations with spatial steps kept inside the barrier")
     parser.add_argument("--output-dir", default=None)
     return parser.parse_args(argv)
 
