@@ -31,6 +31,8 @@ def main(argv=None):
     parser.add_argument('--steps', type=int, default=128)
     parser.add_argument('--lag', type=int, default=8)
     parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--lr-step', type=int, default=None, help='Override native scheduler step size')
+    parser.add_argument('--lr-gamma', type=float, default=None, help='Override native scheduler decay factor')
     parser.add_argument('--mc-paths', type=int, default=50000)
     parser.add_argument('--eval-paths', type=int, default=512)
     parser.add_argument('--reference-seed', type=int, default=1729)
@@ -53,6 +55,10 @@ def main(argv=None):
     parser.add_argument('--python', default=sys.executable, help='Interpreter with torch and signatory installed')
     parser.add_argument('--output-dir', default='outputs/comparison')
     args = parser.parse_args(argv)
+    if args.lr_step is not None and args.lr_step <= 0:
+        parser.error('--lr-step must be positive.')
+    if args.lr_gamma is not None and not 0 < args.lr_gamma <= 1:
+        parser.error('--lr-gamma must be in (0, 1].')
     if args.pde_sampling == 'full' and args.pde_precision != 'float64':
         parser.error('--pde-sampling full requires --pde-precision float64.')
     if min(args.epochs, args.batch_size, args.steps, args.lag, args.eval_paths, args.threads) <= 0 or args.mc_paths < 2:
@@ -94,6 +100,10 @@ def main(argv=None):
                     native = dict(epochs=args.epochs, batch_size=args.batch_size, seed=seed, device=args.device,
                                   s0=args.s0, r=args.r, sigma=args.sigma, T=args.T, lr=args.lr,
                                   option_type=args.option_type, output_dir=str(run_dir), print_every=max(1, args.epochs // 10))
+                    if args.lr_step is not None:
+                        native['lr_step'] = args.lr_step
+                    if args.lr_gamma is not None:
+                        native['lr_gamma'] = args.lr_gamma
                     if method == 'state_pinn' and product == 'barrier_upout':
                         native['terminal_sampling'] = args.terminal_sampling
                         native['pde_sampling'] = args.pde_sampling

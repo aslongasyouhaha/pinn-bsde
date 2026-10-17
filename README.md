@@ -141,6 +141,21 @@ python -m scripts.run_comparison --methods state_pinn --products barrier_upout -
 
 Notebook 读取两组的 validation.json、surface_validation.csv 展示对照。原默认模式的短运行 checkpoint 已确认与改动前完全一致。
 
+## 向上敲出：学习率衰减对照
+
+初始学习率保持 5e-4，仍每 1,000 轮衰减，只把衰减因子从 0.5 改为 0.9。10,001 轮结束时，学习率从约 4.88e-7 提高到 1.74e-4。分别在原采样配置和补全采样配置下比较，默认设置未改。
+
+~~~bash
+python -m scripts.run_comparison --methods state_pinn --products barrier_upout --lr-gamma 0.9 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_lr_decay_legacy
+python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --pde-sampling full --pde-precision float64 --lr-gamma 0.9 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_lr_decay
+~~~
+
+原采样配置下，内部网格相对 L2 误差由 13.60% 降至 10.54%，边界 RMSE 由 0.0101 降至 0.00794，终端 RMSE 由 0.0446 降至 0.0343，初始价格误差由 3.00% 小幅降至 2.85%。补全采样配置下，内部和边界误差也下降，但终端、初始价格误差上升，仍有取舍。
+
+每一对实验除衰减因子外配置相同，前 1,000 轮的全部 loss 记录与最终评估 MC 完全一致。两个采样背景使用的 PDE 差分精度不同，应在各背景内部比较学习率影响。这是单 seed 结果，不据此替换默认配置或声称完整收敛。
+
+统一入口可显式覆盖 --lr-step 和 --lr-gamma，未指定时保留各方法原有默认值。Notebook 自动生成学习率及 loss 对照图和 outputs/state_pinn_lr_decay/lr_decay_comparison.csv。
+
 ## 来源
 
 原论文：[Solving path dependent PDEs with LSTM networks and path signatures](https://arxiv.org/abs/2011.10630)，Marc Sabate-Vidales、David Šiška、Lukasz Szpruch（2020）。[论文 PDF](docs/2011.10630_Solving_path_dependent_PDEs_with_LSTM_networks_and_path_signatures.pdf) 已归档。
