@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/msabvid/Deep-PPDE",
+  "commit": "b704b32d3a5b064586893bdb15a00f1aa12d2fc9",
+  "files": {
+    "lib/__init__.py": {
+      "url": "https://raw.githubusercontent.com/msabvid/Deep-PPDE/b704b32d3a5b064586893bdb15a00f1aa12d2fc9/lib/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "lib/augmentations.py": {
+      "url": "https://raw.githubusercontent.com/msabvid/Deep-PPDE/b704b32d3a5b064586893bdb15a00f1aa12d2fc9/lib/augmentations.py",
+      "sha256": "9485ffde72b78704c8bcdc20af6b2ed8aa45bab2d62032df6559a5031a72577f"
+    },
+    "lib/bsde.py": {
+      "url": "https://raw.githubusercontent.com/msabvid/Deep-PPDE/b704b32d3a5b064586893bdb15a00f1aa12d2fc9/lib/bsde.py",
+      "sha256": "815046a57f1da67381fc0bc0f64c01aab96815f349fc8a81a9edc3d00cb44fd9"
+    },
+    "lib/networks.py": {
+      "url": "https://raw.githubusercontent.com/msabvid/Deep-PPDE/b704b32d3a5b064586893bdb15a00f1aa12d2fc9/lib/networks.py",
+      "sha256": "daba72a834eea8903ef776967542199fc8e39472cfc5d7f6f74a5048511fe023"
+    },
+    "lib/options.py": {
+      "url": "https://raw.githubusercontent.com/msabvid/Deep-PPDE/b704b32d3a5b064586893bdb15a00f1aa12d2fc9/lib/options.py",
+      "sha256": "cda15a7a81e6bfc9dc896051f1e97f513dd05c61ac441cd31aedf82b5b3cc10d"
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/msabvid/Deep-PPDE/b704b32d3a5b064586893bdb15a00f1aa12d2fc9/LICENSE",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    }
+  },
+  "modified": false
+}

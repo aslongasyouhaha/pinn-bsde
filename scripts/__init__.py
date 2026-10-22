@@ -1,1 +1,1 @@
-﻿"""Shared pricing and analysis scripts."""
+"""Shared pricing and analysis scripts."""

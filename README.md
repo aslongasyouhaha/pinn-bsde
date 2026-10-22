@@ -1,163 +1,145 @@
-# PINN 与 Signature–BSDE 的期权定价对比
+# Single-Asset Path-Dependent Option Pricing
 
-在 Black–Scholes 模型下，比较浮动执行价回望、向上敲出及向下敲出期权的三类方法，并对照解析价格：
+PINN and BSDE implementations for ten Black-Scholes option types: floating-strike lookback calls and puts, and up/down knock-in/knock-out calls and puts. Knock-ins are obtained through exact in-out parity.
 
-1. 充分状态 PINN：前馈网络读取定价所需的充分状态。
-2. LSTM–PINN：从路径学习表示，使用实验性的 PDE 风格残差。
-3. Signature–LSTM–BSDE：分段 logsignature、LSTM 与 BSDE 损失。
+Read [summary.md](summary.md) for the mathematical derivations, investigations, result tables, three-seed ranges, and conclusions. This README covers installation, code organization, execution, and output locations.
 
-数学联系、边界条件及现有近似见 [summary.md](summary.md)。展示入口为 [comparison.ipynb](comparison.ipynb)。
+The repository includes necessary source code, the original paper, its accompanying library and license, and these two Markdown documents. Training outputs, weights, notebooks, course assignments, and local environments are not distributed. Reported results are recorded in the summary; reproducing the underlying artifacts requires running the relevant experiments.
 
-## 目录
+## Methods
 
-```text
-comparison.ipynb                 解析解、三方法价格和 loss 曲线对比
-summary.md                      PDE/PPDE–BSDE 联系及实现限制
-scripts/
-  analytic_bs.py                欧式、回望、障碍解析定价
-  state_pinn/                   充分状态 PINN，三个产品脚本
-  lstm_pinn/                    LSTM–PINN，三个产品脚本
-  signature_bsde/               Signature–BSDE，三个产品脚本
-  run_comparison.py             统一训练与结果汇总入口
-  references.py                 公共离散/bridge MC 和标准误
-  artifacts.py                  逐轮 loss、指标及模型保存
-  report.py                     从已保存结果生成图表
-docs/                           原始论文及来源说明
-outputs/                        本地生成结果，默认不提交 Git
-refined/                        本地旧入口兼容层，不随新仓库发布
-```
+| Method | Historical information | Main output |
+|---|---|---|
+| Sufficient-state PINN | Explicit extremum or survival state; direct state-space sampling | Differentiable prices and Greeks |
+| Raw-history LSTM-PINN | Chronological observed prices and times | History-conditioned differentiable prices |
+| Signature + LSTM-BSDE | Truncated signatures of successive path segments | Prices and Brownian-integral coefficients |
+| Raw-history LSTM-BSDE | Fine-grid observations and learned price-level features | Prices and an adapted hedge-coefficient sequence |
 
-工作区中的旧实验、课程资料、模型权重和虚拟环境不属于本次发布范围；`scripts/` 中的九个实现是新入口。原始路径 LSTM–BSDE `refined/bs_lookback_bsde.py` 作为历史实验保留，不属于三方法对比。
+Sufficient-state experiments use continuous-monitoring analytical references. History-based experiments use 128 discrete monitoring steps and matched numerical references. The original Signature barrier configurations did not meet pricing requirements; improved raw-history configurations are a separate method configuration, not a successful reproduction of the original method. See the summary for the evidence and its scope.
 
-## 环境
+## Installation
 
-训练已在 Python **3.9.18**、PyTorch **1.9.0+cpu**、Signatory 分发包 **1.2.6.1.9.0**、NumPy **1.26.4** 上验证。建议使用单独的 Python 3.9 虚拟环境。
-
-Signatory 的二进制包必须匹配 PyTorch 版本，详见[官方安装说明](https://signatory.readthedocs.io/en/latest/pages/usage/installation.html)。以下为对应当前已验证版本的安装命令；需要先安装 PyTorch，再安装 Signatory：
+Use Python 3.9. Signatory is a compiled extension tied to a particular PyTorch build. The tested CPU environment uses PyTorch 1.9.0 and Signatory 1.2.6.1.9.0.
 
 ```bash
-python -m pip install "torch==1.9.0+cpu" -f https://download.pytorch.org/whl/torch_stable.html
+python -m venv .venv
+```
+
+Activate the environment with `.venv\Scripts\activate` on Windows or `source .venv/bin/activate` on Linux, then install:
+
+```bash
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -c "import torch,signatory; print(torch.__version__,signatory.__version__)"
+python -c "import torch, signatory; print(torch.__version__, signatory.__version__)"
 ```
 
-PyTorch 历史安装方式见[官方页面](https://pytorch.org/get-started/previous-versions/)。`requirements.txt` 中的 Signatory 对应上述 PyTorch 版本，不适用于任意新版本 PyTorch。平台缺少对应 wheel 时可能需要本地 C++ 编译环境。
+For GPU training, use a matching PyTorch 1.9.0 CUDA build and compatible Signatory wheel rather than the CPU torch pin. The experiments used a separate Linux environment with PyTorch 1.9.0+cu111. CUDA must be available before selecting `--device cuda`. The sufficient-state suite runs on CPU; the history-based programs accept a device option.
 
-
-## 运行
-
-所有命令均从仓库根目录执行。先做一次小规模流程验证：
-
-```bash
-python -m scripts.run_comparison --products lookback barrier_upout barrier_downout --epochs 2 --batch-size 16 --steps 8 --lag 2 --mc-paths 256 --eval-paths 16 --output-dir outputs/smoke
-```
-
-正式实验示例：
-
-```bash
-python -m scripts.run_comparison --products lookback barrier_upout barrier_downout --epochs 3000 --batch-size 256 --steps 128 --lag 8 --seeds 1 2 3 --output-dir outputs/experiment_01
-python -m scripts.report outputs/experiment_01
-```
-
-这只是实验配置示例，不保证达到指定精度。使用 `--option-type put` 切换 put；市场参数包括 `--s0 --r --sigma --T --strike --up-barrier --down-barrier`。`--steps` 必须能被 `--lag` 整除。当前回望解析公式不支持零利率；统一入口对此给出错误提示。`--device cuda` 需要自行配置匹配的 CUDA 训练环境。
-
-单独运行方法，可用 `--help` 查看该方法全部超参数：
-
-```bash
-python -m scripts.state_pinn.bs_barrier_upout_pinn --epochs 10001 --output-dir outputs/single_state
-python -m scripts.lstm_pinn.bs_barrier_upout_lstm_pinn --epochs 1000 --mc-anchor-weight 0 --output-dir outputs/single_lstm
-python -m scripts.signature_bsde.bs_barrier_upout_signature_bsde --epochs 1000 --output-dir outputs/single_bsde
-```
-
-统一入口默认保留充分状态障碍 PINN 的 MC 价格锚点（权重 100）；LSTM–PINN 仍保持此前的统一入口配置（权重 0）。可用 `--mc-anchor-weight` 显式覆盖。锚点属于 MC 辅助监督，解释初始价格误差时应同时查看未锚定状态的误差。统一入口固定共同市场、训练轮数、batch、学习率及模拟网格，其余网络结构和损失权重保留各方法默认值并保存；这不是等参数量或等算力实验。
-
-打开 `comparison.ipynb` 并运行全部单元格即可展示。Notebook 使用短训练配置（100 轮、32 步）演示，已有输出时读取保存的数据并显示实际配置；更改参数后应指定新的输出目录。统一训练入口会拒绝覆盖已有配置的实验目录。
-
-## 输出位置
-
-使用 `--output-dir outputs/experiment_01` 后：
+## Project Structure
 
 ```text
-outputs/experiment_01/
-  config.json                   统一配置及运行状态
-  references.json               公共解析价、MC 价格与标准误
-  references.log                参考价格计算日志
-  comparison.csv                每个产品、方法、随机种子的价格及误差
-  figures/                      report 或 notebook 生成的价格图和 loss 图
-  <product>/<method>/seed_<n>/
-    history.csv                 每一轮的总 loss 及各损失分量
-    metrics.json                价格、误差、耗时、版本和完整训练参数
-    model.pt                    state_dict、参数、市场和合约配置
-    train.log                   训练日志
-    command.json                实际调用参数
+README.md                         Installation and execution
+summary.md                        Consolidated research summary
+requirements.txt                  Runtime dependencies
+docs/
+  2011.10630_...pdf                Original paper
+  Deep-PPDE-LICENSE.txt            Upstream license
+scripts/
+  analytic_bs.py                  Analytical prices
+  binomial_bs.py                  CRR lattice reference
+  barrier_heat_kernel.py          Auxiliary and exact barrier kernels
+  state_pinn/                    Sufficient-state models and evaluators
+  run_anchored_transition.py      Soft/hard/H training and refinement
+  run_anchored_seeds.py           Additional sufficient-state seeds
+  lstm_ten_pinn.py                Current raw-history LSTM-PINN
+  lstm_ten_bsde.py                Current raw-history LSTM-BSDE
+  lstm_ten_contracts.py           Discrete payoffs and quadrature references
+  single_asset_signature_bsde.py  Original Signature barrier baseline
+  exact_terminal_history_bsde.py  Historical exact-terminal Signature variant
+  reproduce_author_lookback.py    Author's single-asset lookback example
+  report_*.py                    Report generation from saved results
+vendor/deep_ppde/
+  lib/                           Required pinned author library
+  source_manifest.json           Source URLs, commit, and SHA256 hashes
+  LICENSE                        Upstream GPL-3.0 license
 ```
 
-`relative_error` 是比例（0.01 表示 1%）；解析价为零时保存为空，改看绝对误差。模型 checkpoint 不包含优化器状态，供推断使用，不支持原样续训。不同方法的 loss 定义不同，图表按方法分开显示。
+All commands below run from the repository root. Use a fresh output directory for a new experiment. Training programs create their output directories; no pretrained weights are required by the current ten-option entry points.
 
-障碍 BSDE 目前学习离散监控支付；PINN 面向连续 PDE。Notebook 同时展示连续解析价、离散 MC 及 bridge MC，避免混淆监控差异和训练误差。LSTM–PINN 的路径时间差分尚不是严格 PPDE 导数，详见数学说明。Notebook 中保存的短训练输出只说明流程可运行。
+## Sufficient-State PINNs
 
-## 当前复核：充分状态障碍 PINN
+Run the soft-constraint, hard-constraint, and H-based comparison:
 
-这一版只使用 $(t,S)$ 与前馈网络，不涉及 LSTM。保留原来的 PDE、终端、障碍、非负及价格上界损失，以及 MC 起始锚点。连续障碍锚点使用精确 GBM 网格与 Brownian bridge 条件存续概率计算，没有将解析价格用作训练标签。采样不断更新，公共 MC 参考使用独立种子。
+```bash
+python -m scripts.run_anchored_transition --output-dir outputs/anchored_transition_15000
+```
 
-本次只恢复统一入口中的充分状态障碍 MC 锚点（默认权重 100），将单方法默认预算设为 10,001 轮、batch 128，并加入独立网格评估。未将没有稳定改善结果的价格表示或采样改动纳入最终算法。LSTM–PINN、Signature–BSDE 和回望算法未改。
+This trains the required variants from scratch, creates shared barrier MC anchors, refines H models using L-BFGS, and evaluates prices and Greeks. Existing historical seed-1 checkpoints are reused only with the explicit `--reuse-existing` option. The default run uses 15,000 Adam updates per trained variant; refinement adds computation.
 
-~~~bash
-python -m scripts.run_comparison --methods state_pinn --products barrier_upout barrier_downout --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_review
-python -m scripts.state_pinn.evaluate outputs/state_pinn_review/barrier_upout/state_pinn/seed_1
-python -m scripts.state_pinn.evaluate outputs/state_pinn_review/barrier_downout/state_pinn/seed_1
-python -m scripts.report outputs/state_pinn_review
-~~~
+After seed 1 has generated `mc_anchors.json`, run the other seeds:
 
-若在绘图环境中调用已有训练环境，增加 --python .venv_signatory/Scripts/python.exe。评估脚本应由训练环境运行。训练完成后自动保存 surface_validation.csv 和 validation.json，检查未设锚点的 30/29 个价格状态、障碍边界和终端支付。
+```bash
+python -m scripts.run_anchored_seeds --seed 2 --workers 4 --output-dir outputs/anchored_transition_15000_seed2
+python -m scripts.run_anchored_seeds --seed 3 --workers 4 --output-dir outputs/anchored_transition_15000_seed3
+python -m scripts.report_state_pinn_seeds
+```
 
-当前单 seed、默认 call 合约的复核结果：向上敲出初始价格误差约 3.00%，向下敲出约 0.21%；独立网格价格相对 L2 误差分别约 13.60% 和 0.14%。向上敲出的近到期边界、终端误差仍较大，尚不能声称整个价格函数收敛。Notebook 保存了实际结果与曲线。
+Outputs:
 
-## 向上敲出：终端采样单项对照
+- `outputs/anchored_transition_15000*/training/<case>/<variant>/`: checkpoints, per-update loss CSV, and configurations.
+- `outputs/anchored_transition_15000*/stages/<stage>/evaluation/`: prices, Delta/Gamma errors, state/path metrics, and residual audits.
+- `outputs/anchored_transition_15000/comparison/`: comparison CSV/JSON, plots, and the generated English report.
+- `outputs/anchored_transition_seeds/`: three-seed aggregate data and report.
 
-只改变终端采样、保持网络、PDE 采样、损失权重、随机种子和 10,001 轮训练预算不变。旧采样只覆盖到 1.14，新采样覆盖障碍 1.2 内侧；两者消耗相同数量的随机数。
+## Raw-History LSTM-PINN and LSTM-BSDE
 
-~~~bash
-python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_terminal_sampling
-python -m scripts.state_pinn.evaluate outputs/state_pinn_terminal_sampling/barrier_upout/state_pinn/seed_1 --compare-to outputs/state_pinn_review/barrier_upout/state_pinn/seed_1
-~~~
+Available cases are `lookback_call`, `lookback_put`, `up_call`, `up_put`, `down_call`, and `down_put`. Run each case with seeds 1, 2, and 3 to reproduce the ten-option tables; knock-ins are derived during evaluation.
 
-默认 --terminal-sampling legacy 保留原配置；full 仅作为单项对照。固定网格终端 RMSE 从 0.0446 降到 0.0208，但边界 RMSE 从 0.0101 增至 0.0288，内部价格相对 L2 误差从 13.60% 增至 21.53%。初始价格误差从 3.00% 增至 5.32%。因此这项改动尚未整体改善求解，不作为默认修复。下一步需单独验证仍被 PDE 采样遗漏的近障碍区域。
+Examples:
 
-本地对照数据、曲线保存在 outputs/state_pinn_terminal_sampling/barrier_upout/state_pinn/seed_1/terminal_sampling_comparison.csv 和 terminal_sampling_curves.csv。Notebook 已嵌入实测结果。
+```bash
+python -m scripts.lstm_ten_pinn --case up_call --seed 1 --device cuda --output-dir outputs/lstm_ten_50000/pinn/up_call/seed1
+python -m scripts.lstm_ten_bsde --case up_call --seed 1 --device cpu --output-dir outputs/lstm_ten_50000/bsde/up_call/seed1
+```
 
-## 向上敲出：PDE 采样范围对照
+Both default to 50,000 total updates, including 3,000 terminal-initialization updates, with a cosine main-stage learning-rate schedule. BSDE main updates are split across 16 backward intervals, while the contract still monitors all 128 steps.
 
-两组均使用补全的终端采样、相同种子和 10,001 轮预算。为使近障碍差分不越界，两组都将空间步长限制在到障碍距离的 45% 以内，并用双精度计算 PDE 差分；模型参数仍保持 float32。两组之间只改变 PDE 采样范围，默认配置未改。
+For the final lookback-put PINN configuration, normalize the PDE without the envelope factor:
 
-~~~bash
-python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --pde-sampling legacy --pde-precision float64 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_pde_control
-python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --pde-sampling full --pde-precision float64 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_pde_full
-~~~
+```bash
+python -m scripts.lstm_ten_pinn --case lookback_put --seed 1 --pde-scale uncapped --device cuda --output-dir outputs/lstm_ten_50000/pinn_put_uncapped/lookback_put/seed1
+```
 
-相同安全差分下，完整 PDE 覆盖使初始价格误差从 5.32% 降至 2.65%，但内部网格相对 L2 误差从 21.53% 升至 67.04%，边界 RMSE 从 0.0288 升至 0.0314，终端 RMSE 从 0.0208 升至 0.0330。这项改动也不替换原默认配置。
+Use the corresponding `seed2` and `seed3` paths for the other seeds. Once scores exist, regenerate the aggregate report with:
 
-在实验组最终模型的一批固定诊断样本上，加权终端损失与边界损失的梯度余弦约 -0.945，呈强烈反向；PDE 与终端项约 -0.771。它提示当前优化在终端、边界条件之间存在明显竞争，不表示这些条件在数学上不相容，也不能从一次诊断推出全部训练过程的因果关系。
+```bash
+python -m scripts.report_lstm_ten
+```
 
-Notebook 读取两组的 validation.json、surface_validation.csv 展示对照。原默认模式的短运行 checkpoint 已确认与改动前完全一致。
+Each run writes `config.json`, `progress.json`, `history.csv`, model checkpoints, and `scores.json` under its specified output directory. The aggregate report and `summary.json` are written under `outputs/lstm_ten_50000/`. Report commands read saved scores; they do not train models or overwrite the research summary.
 
-## 向上敲出：学习率衰减对照
+## Signature Baseline and Author Example
 
-初始学习率保持 5e-4，仍每 1,000 轮衰减，只把衰减因子从 0.5 改为 0.9。10,001 轮结束时，学习率从约 4.88e-7 提高到 1.74e-4。分别在原采样配置和补全采样配置下比较，默认设置未改。
+Run the project-adapted single-asset Signature barrier baseline:
 
-~~~bash
-python -m scripts.run_comparison --methods state_pinn --products barrier_upout --lr-gamma 0.9 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_lr_decay_legacy
-python -m scripts.run_comparison --methods state_pinn --products barrier_upout --terminal-sampling full --pde-sampling full --pde-precision float64 --lr-gamma 0.9 --epochs 10001 --batch-size 128 --mc-paths 200000 --output-dir outputs/state_pinn_lr_decay
-~~~
+```bash
+python -m scripts.single_asset_signature_bsde --device cpu --output-dir outputs/single_asset_author_bsde_barrier_15000
+```
 
-原采样配置下，内部网格相对 L2 误差由 13.60% 降至 10.54%，边界 RMSE 由 0.0101 降至 0.00794，终端 RMSE 由 0.0446 降至 0.0343，初始价格误差由 3.00% 小幅降至 2.85%。补全采样配置下，内部和边界误差也下降，但终端、初始价格误差上升，仍有取舍。
+This is the baseline whose collapse is documented in the summary, not the improved raw-history solver. It uses the bundled, verified author library by default. The program records its checkpoints, loss history, validation, conditional prices, and hedging diagnostics under the selected directory.
 
-每一对实验除衰减因子外配置相同，前 1,000 轮的全部 loss 记录与最终评估 MC 完全一致。两个采样背景使用的 PDE 差分精度不同，应在各背景内部比较学习率影响。这是单 seed 结果，不据此替换默认配置或声称完整收敛。
+The public author's single-asset lookback example is available separately:
 
-统一入口可显式覆盖 --lr-step 和 --lr-gamma，未指定时保留各方法原有默认值。Notebook 自动生成学习率及 loss 对照图和 outputs/state_pinn_lr_decay/lr_decay_comparison.csv。
+```bash
+python -m scripts.reproduce_author_lookback --device cpu --output-dir outputs/author_lookback_readme_10000
+```
 
-## 来源
+This wrapper downloads and verifies the pinned source under its output directory and uses the author's example parameters. It requires network access and is not the common-market ten-option experiment.
 
-原论文：[Solving path dependent PDEs with LSTM networks and path signatures](https://arxiv.org/abs/2011.10630)，Marc Sabate-Vidales、David Šiška、Lukasz Szpruch（2020）。[论文 PDF](docs/2011.10630_Solving_path_dependent_PDEs_with_LSTM_networks_and_path_signatures.pdf) 已归档。
+The retained `exact_terminal_history_bsde.py` is a historical matched-initialization comparison: it requires an explicitly supplied terminal-only BSDE checkpoint through `--initial-value`. That historical checkpoint is not distributed. The current ten-option programs do not depend on it.
 
-论文配套代码：[msabvid/Deep-PPDE](https://github.com/msabvid/Deep-PPDE)，其 GPL-3.0 许可副本保存在 `docs/Deep-PPDE-LICENSE.txt`。本项目的三方法实验由工作区现有实现整理而来，未将整个原始代码库打包进此仓库。
+## Paper and Source Attribution
+
+[Solving path dependent PDEs with LSTM networks and path signatures](https://arxiv.org/abs/2011.10630), Marc Sabate-Vidales, David Siska, and Lukasz Szpruch (2020). A [PDF copy](docs/2011.10630_Solving_path_dependent_PDEs_with_LSTM_networks_and_path_signatures.pdf) is included.
+
+The necessary author library is pinned to commit `b704b32d3a5b064586893bdb15a00f1aa12d2fc9` of [msabvid/Deep-PPDE](https://github.com/msabvid/Deep-PPDE). Its files are unchanged and accompanied by their original GPL-3.0 license and source manifest. Project wrappers, state models, and raw-history variants are identified separately from the original author method.

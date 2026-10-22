@@ -126,15 +126,15 @@ def barrier_price(
     _check_positive("strike", strike)
     _check_positive("barrier", barrier)
     _check_positive("sigma", sigma)
-    if tau <= 0.0:
-        alive_or_hit = _barrier_active(spot, spot, barrier, knock_type)
-        payoff = max(spot - strike, 0.0) if option_type == "call" else max(strike - spot, 0.0)
-        return payoff if alive_or_hit else 0.0
-
     min_s = spot if running_min is None else running_min
     max_s = spot if running_max is None else running_max
     _check_positive("running_min", min_s)
     _check_positive("running_max", max_s)
+    if tau <= 0.0:
+        alive_or_hit = _barrier_active(min_s, max_s, barrier, knock_type)
+        payoff = max(spot - strike, 0.0) if option_type == "call" else max(strike - spot, 0.0)
+        return payoff if alive_or_hit else 0.0
+
     discount = math.exp(-r * tau)
     power = 2.0 * r / sigma**2
     vanilla = bsm_price(spot, strike, tau, r, sigma, option_type)

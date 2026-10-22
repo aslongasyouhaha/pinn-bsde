@@ -4,10 +4,10 @@
 !/.gitattributes
 !/README.md
 !/summary.md
-!/comparison.ipynb
 !/requirements.txt
 !/scripts/
 !/docs/
+!/vendor/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/

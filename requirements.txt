@@ -1,11 +1,8 @@
-# Python 3.9. Install torch first, as described in README.md.
+# Python 3.9; Signatory must match the PyTorch build.
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.9.0+cpu
 numpy==1.26.4
 signatory==1.2.6.1.9.0
 matplotlib==3.7.2
-pandas==2.2.3
-nbformat==5.9.2
-nbclient==0.5.13
-ipykernel==6.29.5
-jupyterlab==4.2.5
+scipy==1.13.1
+mpmath==1.3.0
