@@ -320,7 +320,7 @@ if __name__=='__main__':
     p.add_argument('--initial-value',help='Optional PINN terminal-only checkpoint; optimizer starts fresh.')
     p.add_argument('--freeze-encoder',action='store_true',help='Keep the pretrained PINN history encoder fixed; train price head only.')
     p.add_argument('--output-dir',required=True)
-    p.add_argument('--source-dir',default='vendor/deep_ppde')
+    p.add_argument('--source-dir',default='deep_ppde')
     p.add_argument('--device',default='cuda')
     for key,value in [('s0',1.),('strike',1.),('barrier',1.2),('r',.03),('sigma',.4),('T',1.),('lr',.0005)]:p.add_argument('--'+key,type=float,default=value)
     for key,value in [('steps',128),('lag',8),('depth',3),('hidden',20),('epochs',3000),('batch-size',128),('seed',1),('mc-paths',16384),('eval-paths',64),('nested-paths',8192)]:p.add_argument('--'+key,type=int,default=value)

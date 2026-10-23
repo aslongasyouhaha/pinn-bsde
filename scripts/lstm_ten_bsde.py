@@ -142,7 +142,7 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--case', choices=CASES, required=True)
     p.add_argument('--output-dir', required=True)
-    p.add_argument('--source-dir', default='vendor/deep_ppde')
+    p.add_argument('--source-dir', default='deep_ppde')
     p.add_argument('--device', default='cuda')
     for flag in ['level-features', 'chrono']:
         p.add_argument('--'+flag, action=argparse.BooleanOptionalAction, default=True)

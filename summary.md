@@ -1,6 +1,6 @@
 # Single-Asset Path-Dependent Options: PINNs, History Encoding, and BSDEs
 
-Updated: 2026-10-22. This research summary presents results, methodology and derivations, investigations, and conclusions.
+Updated: 2026-10-23. This research summary presents results, methodology and derivations, investigations, and conclusions.
 
 ## 1. Pricing Problem, Information, and Evaluation
 
@@ -119,54 +119,129 @@ These expressions apply when $\tau>0$ and $x>0$; expiry and previously knocked-o
 
 The lookback hard structure uses $x=\log(s/m)$ or $\log(M/s)$ and $\rho=\sqrt{x^2+\sigma^2\tau}$ to construct an even algebraic baseline, then adds $s\sqrt{\tau}N(t,\log s,x^2/(x^2+\sigma^2\tau))$. At expiry, the payoff is assigned directly. Evenness enforces the extremum-boundary derivative. No auxiliary heat equation is solved in this baseline, so it is not an H kernel.
 
-### 2.4 Lookback H: Homogeneity and a Simplified Diffusion
+### 2.4 Lookback H: Why Reflection Gives This Kernel
 
-Payoff homogeneity motivates $v=s\,u(\tau,x)$. For a lookback call, $x=\log(s/m)$; for a put, $x=\log(M/s)$; both are nonnegative. Substituting into the true PDE gives
+The design starts from known conditions, rather than choosing an arbitrary price shape: the terminal payoff must be recovered, and the derivative with respect to the historical extremum must vanish when spot reaches that extremum. The auxiliary H solves a simpler equation with those same conditions; the network then learns the correction required by the true pricing PDE.
 
-$$
-u_\tau=\tfrac12\sigma^2u_{xx}+\varepsilon(r+\tfrac12\sigma^2)u_x,
-\quad u_x(\tau,0)=0,
-$$
-
-Here epsilon is +1 for the call and -1 for the put, with initial functions $f(x)=1-e^{-x}$ and $f(x)=e^x-1$, respectively.
-
-Dropping the first-order drift term gives the Neumann heat equation on the half-line. Its reflected heat kernel yields
+**Step 1: use payoff homogeneity.** For a call, set $x=\log(s/m)$; for a put, set $x=\log(M/s)$. In both cases $x\geq0$. Write $v=s\,u(\tau,x)$, with $\tau=T-t$ and $\varepsilon=+1$ for the call or $-1$ for the put. Holding the historical extremum fixed,
 
 $$
-H_{\rm LB}(t,s,y)=s\int_0^\infty
-\big[\phi_{\sigma^2\tau}(z-x)+\phi_{\sigma^2\tau}(z+x)\big]f(z)\,dz,
+v_t=-s u_\tau,\qquad
+v_s=u+\varepsilon u_x,\qquad
+v_{ss}=\frac{\varepsilon u_x+u_{xx}}{s}.
 $$
 
-The function $\phi_v$ is the centered Gaussian density with variance v, and y denotes m or M. This auxiliary solution has the correct payoff limit and extremum-boundary condition, but is not the full true price. The current output is
+Substitution into the Black-Scholes PDE, followed by cancellation of the $rsu$ terms, gives
+
+$$
+u_\tau=\tfrac12\sigma^2u_{xx}
++\varepsilon(r+\tfrac12\sigma^2)u_x.
+$$
+
+At a new extremum, $v_m=-(s/m)u_x$ for the call and $v_M=(s/M)u_x$ for the put, so the physical boundary condition becomes $u_x(\tau,0)=0$. Homogeneity also transforms the terminal data into
+
+$$
+u(0,x)=f(x),\qquad
+f_{\rm call}(x)=1-e^{-x},\quad f_{\rm put}(x)=e^x-1.
+$$
+
+**Step 2: simplify the equation, preserving its boundary data.** Drop the first-order drift term and solve the auxiliary half-line problem
+
+$$
+h_\tau=\tfrac12\sigma^2h_{xx},\quad x>0,
+\qquad h_x(\tau,0)=0,\qquad h(0,x)=f(x).
+$$
+
+This is a modeling choice: the omitted drift is left for the true-PDE correction to learn. It does not say that the original market has zero drift.
+
+**Step 3: extend the payoff evenly and apply the Gaussian kernel.** With
+
+$$
+\phi_a(y)=\frac{1}{\sqrt{2\pi a}}\exp\!\left(-\frac{y^2}{2a}\right),
+$$
+
+convolving the even extension $f(|z|)$ over the full line and separating its positive and negative halves gives
+
+$$
+h(\tau,x)=\int_0^\infty
+\underbrace{\left[\phi_{\sigma^2\tau}(z-x)
++\phi_{\sigma^2\tau}(z+x)\right]}_{p_N(\tau;x,z)}f(z)\,dz.
+$$
+
+The **plus** sign is dictated by the Neumann condition: at $x=0$, the two derivatives cancel, so $\partial_x p_N(\tau;0,z)=0$. As time to expiry tends to zero, the Gaussian becomes a point mass and recovers f. Multiplying by s gives $H_{\rm LB}=s h$.
+
+Equivalently, $h(\tau,x)=\mathbb E[f(|x+\sigma\sqrt{\tau}Z|)]$ for standard normal Z. For $a=\sigma\sqrt{\tau}$ and $k=\pm1$, the folded-normal moment has the explicit form
+
+$$
+F_k=\mathbb E[e^{k|x+aZ|}]
+=e^{k^2a^2/2}\left[e^{kx}\Phi(x/a+ka)
++e^{-kx}\Phi(-x/a+ka)\right].
+$$
+
+Therefore the implemented auxiliary values are $H_{\rm call}=s(1-F_{-1})$ and $H_{\rm put}=s(F_{+1}-1)$ for positive remaining time; expiry is handled by the payoff branch. At $x=0$, both have leading behavior $s\sigma\sqrt{2\tau/\pi}$. This square-root-time boundary shape is supplied by the kernel instead of being learned from a flat terminal payoff at the corner.
+
+**Step 4: preserve these conditions while learning a correction.** The current output is
 
 $$
 v_\theta=H_{\rm LB}+s\frac{\tau}{T}N_\theta
 \left(t/T,\log(s/S_0),\frac{x^2}{x^2+\sigma^2\tau}\right).
 $$
 
-The correction vanishes at expiry and is even in x. The true pricing PDE determines the remaining correction, including drift effects. H explicitly uses the true extremum, making this a sufficient-state method.
+The correction vanishes at expiry and is even in x, preserving the extremum condition for positive remaining time. The final output still has to satisfy the true PDE. H explicitly uses m or M and is an auxiliary diffusion solution, not the exact drifted lookback price. The payoff, state reduction, boundary type, and solvable auxiliary equation are all prior knowledge in this construction.
 
-### 2.5 Barrier H: Absorbing Heat Kernels and Bounded Outputs
+### 2.5 Barrier H: Why Absorption Gives a Difference of Kernels
 
-In the signed log-distance coordinate $x>0$, the process has dynamics $dx=\mu\,dt+\sigma\,d\widetilde W$, with $\mu=\pm(r-\sigma^2/2)$. Its absorbing transition density is
+For a zero-rebate knock-out, the relevant condition is value zero at the barrier, rather than a zero derivative. Define $x=\log(s/B)$ for a down barrier or $x=\log(B/s)$ for an up barrier, so survival corresponds to $x>0$. The transformed process has dynamics $dx=\mu\,dt+\sigma\,d\widetilde W$, with $\mu=r-\sigma^2/2$ for a down barrier and its negative for an up barrier.
+
+**Step 1: impose absorption by an odd extension.** With zero log drift, the killed heat kernel is
 
 $$
-p_\mu(\tau;x,z)=\phi_{\sigma^2\tau}(z-x-\mu\tau)
--e^{-2\mu x/\sigma^2}\phi_{\sigma^2\tau}(z+x-\mu\tau),\quad z>0.
+p_D(\tau;x,z)=\phi_{\sigma^2\tau}(z-x)
+-\phi_{\sigma^2\tau}(z+x),\qquad x,z>0.
 $$
 
-Integrating the payoff against this density and discounting gives the true continuously monitored price. The auxiliary H used here instead takes the simplified kernel with zero log drift. J is the knock-in contribution under the same auxiliary model. H+J is that model's vanilla value, which need not equal the true vanilla value C.
+The **minus** sign makes $p_D(\tau;0,z)=0$: a source and its opposite-sign mirror cancel at the barrier. The remaining density is nonnegative on the surviving half-line, and its mass is the survival probability under this auxiliary diffusion. The Neumann sum and Dirichlet difference thus follow from different boundary conditions, not arbitrary kernel choices.
 
-The current `bounded_odds` structure is
+Let $\eta=+1$ for a down barrier or $-1$ for an up barrier, so $s(z)=B e^{\eta z}$, and let $g(s)$ be the vanilla call or put payoff. The auxiliary knock-out value is
+
+$$
+H(t,s)=e^{-r\tau}\int_0^\infty
+p_D(\tau;x,z)g(B e^{\eta z})\,dz.
+$$
+
+At $x=0$ it is zero; at a fixed surviving interior state its expiry limit is $g(s)$. In code, call/put payoffs are integrated against Gaussians using truncated exponential moments, rather than estimating this integral by MC.
+
+**Step 2: identify precisely what was simplified.** The true drifted density can be obtained from the driftless kernel by
+
+$$
+p_\mu(\tau;x,z)=
+\exp\!\left(\frac{\mu(z-x)}{\sigma^2}
+-\frac{\mu^2\tau}{2\sigma^2}\right)p_D(\tau;x,z)
+$$
+$$
+=\phi_{\sigma^2\tau}(z-x-\mu\tau)
+-e^{-2\mu x/\sigma^2}\phi_{\sigma^2\tau}(z+x-\mu\tau).
+$$
+
+Integrating this full density gives the true continuous-monitoring price in this tractable model. The chosen H instead sets $\mu=0$ while retaining discounting. Zero **log** drift corresponds to auxiliary stock drift $\sigma^2/2$, generally different from r. Hence H is not guaranteed to lie below the true vanilla price or satisfy the true pricing PDE. Its role is to encode the absorbing shape and terminal limit; training corrects the final price under the actual market.
+
+**Step 3: combine the auxiliary shape with true price bounds.** Under the same auxiliary model, decompose terminal payoff value into knock-out H and knock-in J. Then $C_{\rm aux}=H+J$ and
 
 $$
 p_0=\frac{H}{H+J},\qquad
-v_\theta=C\,\sigma\!\left(\log\frac HJ+\sigma\sqrt{\tau}N_\theta\right).
+\operatorname{logit}(p_0)=\log(H/J).
 $$
 
-The outer sigma denotes the sigmoid; the sigma multiplying the square root of time is volatility. Zero values, expiry, previously hit histories, and numerical underflow are handled separately in code. The quantity p0 is the knock-out share of auxiliary vanilla value, not a plain survival probability. This mapping transfers the auxiliary shape to the true vanilla-price scale, enforcing $0\leq v\leq C$ while preserving terminal and absorbing conditions.
+This is a payoff-weighted value share, not a plain survival probability: paths are weighted by their terminal payoff. The implemented `bounded_odds` output uses the true vanilla price C:
 
-The PDE acts on the final output v-theta, rather than checking H alone. Constructing H therefore does not eliminate PDE learning, but supplies substantial prior knowledge about an auxiliary equation, price scales, and boundary-layer shapes. H is not a universally available formula for arbitrary complex options.
+$$
+v_\theta=C\operatorname{sigmoid}
+\left(\log(H/J)+\sigma\sqrt{\tau}N_\theta\right).
+$$
+
+At zero network correction the baseline is $C H/(H+J)$, not H itself. This rescales the auxiliary allocation to the true vanilla-price bound. The sigmoid guarantees $0\leq v\leq C$; absorption, expiry, previously hit states, and numerical underflow are handled by the corresponding limits and explicit code branches. The square-root-time correction scale accommodates the log-distance layer $x=O(\sigma\sqrt{\tau})$ and vanishes at expiry when the network output remains bounded.
+
+The real PDE acts on the final output, not H alone. These kernels are justified by their auxiliary equations and boundary conditions, but they remain deliberate, problem-specific prior knowledge. Their construction is not a universal formula for arbitrary exotic payoffs.
 
 ### 2.6 Investigations and Conclusions
 
@@ -252,6 +327,28 @@ The notation H-tilde distinguishes this lift from the sufficient-state heat kern
 - For barriers, it is the discounted expected payoff restricted to the surviving side at maturity only. It does not check historical or future intermediate hits.
 - For lookback calls it is s; for puts it is 6s. The latter is an imposed envelope, not a global bound for arbitrarily large historical-maximum-to-current-price ratios.
 - It therefore does not hard-code the complete historical terminal payoff or enforce zero current value for every already-hit history. The LSTM still has to learn historical distinctions.
+
+**Why the history-free lift is different.** For a barrier with surviving side D, the lift is explicitly
+
+$$
+\widetilde H(t,s)=e^{-r\tau}\mathbb E\!\left[
+g\!\left(s e^{(r-\sigma^2/2)\tau+\sigma\sqrt{\tau}Z}\right)
+\mathbf 1_{\{s e^{(r-\sigma^2/2)\tau+\sigma\sqrt{\tau}Z}\in D\}}\right].
+$$
+
+It integrates a known terminal payoff against the ordinary lognormal transition law, with no absorbing image term. It deliberately does not use the true historical hit flag. The true discrete knock-out payoff is bounded above by this terminal-only payoff path by path, so this provides a natural price envelope. However, it can remain positive for an already-hit history or at the current barrier before the next check; the recurrent representation must learn those historical distinctions.
+
+For a lookback call, $0\leq S_T-m_T\leq S_T$ implies $V_t\leq S_t$ by risk-neutral discounting, justifying the lift s. The lookback put has no analogous global constant-times-spot bound over arbitrary historical maxima; 6s is an imposed finite-domain envelope, not a theorem.
+
+On smooth intervals these lifts solve the true interior pricing PDE: the barrier lift is a terminal-payoff semigroup, and s and 6s satisfy the Black-Scholes operator directly. For $v=\widetilde H q$ with positive lift and fixed history, product differentiation gives
+
+$$
+\frac{\mathcal R[\widetilde H q]}{\widetilde H}
+=q_t+\left(rs+\sigma^2s^2\frac{\widetilde H_s}{\widetilde H}\right)q_s
++\tfrac12\sigma^2s^2q_{ss}.
+$$
+
+Thus a constant q can satisfy the interval PDE while still misrepresenting history. Observation interfaces and the full terminal payoff remain essential. This also explains why an interior heat lift alone cannot replace learning the historical state. For an auxiliary lift that does not solve the true PDE, an additional source term $q\mathcal R[H]/H$ would remain in this identity.
 
 Ordinary squared regression through this output has an additional chain-rule factor $\widetilde H\operatorname{sigmoid}(A)(1-\operatorname{sigmoid}(A))$. The current canonical regression instead uses
 

@@ -1,6 +1,6 @@
 """Run the unmodified Deep-PPDE README lookback example at a pinned commit.
 
-The pinned library is bundled under vendor with its license; this wrapper adds recording and
+The pinned library is bundled under deep_ppde with its license; this wrapper adds recording and
 independent evaluation, not changes to the author's optimizer or loss.
 """
 from __future__ import annotations

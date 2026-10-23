@@ -245,7 +245,7 @@ def run(args):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output-dir',default='outputs/single_asset_author_bsde_barrier_15000')
-    p.add_argument('--source-dir',default='vendor/deep_ppde')
+    p.add_argument('--source-dir',default='deep_ppde')
     p.add_argument('--device',default='cuda')
     for name,value in [('s0',1.),('strike',1.),('barrier',1.2),('r',.03),('sigma',.4),('T',1.)]:p.add_argument('--'+name,type=float,default=value)
     for name,value in [('steps',128),('lag',8),('depth',3),('hidden',20),('epochs',15000),('batch-size',128),('seed',1),('mc-paths',131072),('eval-paths',128),('nested-paths',65536)]:p.add_argument('--'+name,type=int,default=value)

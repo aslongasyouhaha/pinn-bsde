@@ -58,7 +58,7 @@ scripts/
   exact_terminal_history_bsde.py  Historical exact-terminal Signature variant
   reproduce_author_lookback.py    Author's single-asset lookback example
   report_*.py                    Report generation from saved results
-vendor/deep_ppde/
+deep_ppde/
   lib/                           Required pinned author library
   source_manifest.json           Source URLs, commit, and SHA256 hashes
   LICENSE                        Upstream GPL-3.0 license

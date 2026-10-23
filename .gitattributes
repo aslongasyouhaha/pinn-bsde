@@ -4,4 +4,4 @@
 *.ipynb text eol=lf
 *.txt text eol=lf
 *.pdf binary
-vendor/deep_ppde/** text eol=lf
+deep_ppde/** text eol=lf

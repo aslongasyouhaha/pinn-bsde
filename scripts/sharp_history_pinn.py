@@ -220,7 +220,7 @@ def run(a):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--output-dir', required=True)
-    p.add_argument('--source-dir', default='vendor/deep_ppde')
+    p.add_argument('--source-dir', default='deep_ppde')
     p.add_argument('--device', default='cuda')
     p.add_argument('--loss', choices=['mse', 'canon'], default='canon')
     p.add_argument('--pde-space', choices=['v', 'q'], default='q')

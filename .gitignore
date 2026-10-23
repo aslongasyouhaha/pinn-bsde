@@ -7,9 +7,12 @@
 !/requirements.txt
 !/scripts/
 !/docs/
-!/vendor/
+!/deep_ppde/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
 outputs/
 *.pt
+
+# Chinese companion is local only; publish the English summary.
+/summary_zh.md
